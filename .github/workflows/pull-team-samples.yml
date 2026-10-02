@@ -1,0 +1,68 @@
+name: Pull samples from a team
+
+on:
+  workflow_dispatch:
+    inputs:
+      team_number:
+        description: "Team number, for example 14691"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pull-samples:
+    # Only ever runs in StarterCode. Team repos inherit this file but it does nothing there.
+    if: github.repository == 'NovaLabsFTC/StarterCode'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the team number
+        env:
+          TEAM: ${{ inputs.team_number }}
+        run: |
+          if ! [[ "$TEAM" =~ ^[0-9]+$ ]]; then
+            echo "Team number must be digits only, for example 14691"
+            exit 1
+          fi
+
+      - name: Check out StarterCode
+        uses: actions/checkout@v4
+        with:
+          path: starter
+
+      - name: Check out the team repo
+        uses: actions/checkout@v4
+        with:
+          repository: NovaLabsFTC/FTC-${{ inputs.team_number }}
+          token: ${{ secrets.TEAM_REPOS_READ_TOKEN }}
+          path: team
+
+      - name: Copy the team's samplecode folder
+        env:
+          TEAM: ${{ inputs.team_number }}
+        run: |
+          BASE=TeamCode/samplecode
+          SRC="team/$BASE/ftc$TEAM"
+          DEST="starter/$BASE/ftc$TEAM"
+          if [ ! -d "$SRC" ]; then
+            echo "FTC-$TEAM has no TeamCode/samplecode/ftc$TEAM folder on master yet."
+            exit 1
+          fi
+          rm -rf "$DEST"
+          mkdir -p "$(dirname "$DEST")"
+          cp -r "$SRC" "$DEST"
+
+      - name: Open or update the pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          path: starter
+          branch: share/ftc${{ inputs.team_number }}
+          commit-message: "Add sample code from FTC-${{ inputs.team_number }}"
+          title: "Sample code from FTC-${{ inputs.team_number }}"
+          body: |
+            Pulled by @${{ github.actor }} from NovaLabsFTC/FTC-${{ inputs.team_number }} (master).
+            Review with the checklist on "Bringing Team Samples into StarterCode", then merge.
+            Teams receive it the next time they sync from StarterCode.
+          labels: shared-sample
